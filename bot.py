@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
@@ -23,12 +23,13 @@ MAX_ENTRANCES = 20
 MAX_FLOORS = 20
 
 apartments = [
-    "Наруж.стены",
-    "Внутр.стены",
+    "Наруж.стены кладка",
+    "Внутр.стены кладка",
     "ПГП",
     "Гипс.штк",
     "Цем.штк",
     "Сшитый пол",
+    "Стяжка",
     "Эл.кв+СС",
     "Окна ПВХ",
     "Окна Аллюм",
@@ -37,16 +38,22 @@ apartments = [
 
 mop = [
     "Внутр.стены кладка",
+    "Коллектор кладка",
+    "ВШ кладка",
     "ШТК",
     "Декоративная штк",
-    "Стяжка",
     "Сшитый пол",
+    "Стяжка",
     "Плитка пол",
     "Плитка настенная",
     "Двери МОП",
+    "Двери коллектор",
     "Ограждения ЛК",
     "Разводка ЭЛ+СС",
-    "Стояки"
+    "Стояк отопление",
+    "Стояк канализация",
+    "Стояк ливневка",
+    "Стояк вода"
 ]
 
 if not os.path.exists(STATE_FILE):
@@ -126,6 +133,28 @@ def get_fill(percent):
         return PatternFill("solid", start_color="99FF99")
 
 
+def format_sheet(ws):
+    widths = {
+        "A": 16,
+        "B": 14,
+        "C": 35,
+        "D": 12,
+        "E": 12,
+        "F": 18,
+        "G": 40,
+        "H": 14
+    }
+
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    ws.freeze_panes = "A2"
+
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True)
+
+
 def create_floor_excel(data):
     filename = f"{data['address'].replace(' ', '_')}_подъезд_{data['entrance']}_этаж_{data['floor']}.xlsx"
 
@@ -140,6 +169,8 @@ def create_floor_excel(data):
 
     for row in data["floor_rows"]:
         ws.append(row)
+
+    format_sheet(ws)
 
     for row_num in range(2, len(data["floor_rows"]) + 2):
         percent = ws[f"H{row_num}"].value
@@ -163,6 +194,8 @@ def create_full_excel(data):
 
     for row in data["all_rows"]:
         ws.append(row)
+
+    format_sheet(ws)
 
     for row_num in range(2, len(data["all_rows"]) + 2):
         percent = ws[f"H{row_num}"].value
