@@ -16,8 +16,8 @@ FILE_NAME = "construction_progress.xlsx"
 user_data = {}
 
 apartments_sections = [
-    "Кладка внутренние стены",
-    "Кладка наружные стены",
+    "Кладка внутр. стены",
+    "Кладка наруж. стены",
     "Стяжка",
     "ПГП",
     "Штукатурка гипс",
@@ -28,17 +28,15 @@ apartments_sections = [
 ]
 
 mop_sections = [
-    "Кладка наружные стены",
+    "Кладка наруж. стены",
     "Кладка коллекторы",
     "Кладка ВШ",
     "Стяжка",
-    "Окна аллюминий",
+    "Окна алюм.",
     "Гипс МОП",
     "Плитка МОП",
     "Двери МОП",
-    "Двери лифт",
-    "Ограждения лестниц",
-    "Двери кровля"
+    "Двери лифт"
 ]
 
 percent_options = ["0", "10", "50", "98", "100"]
@@ -62,8 +60,8 @@ def save_excel(row):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
-            InlineKeyboardButton(f"Подъезд {i}", callback_data=f"entrance_{i}"),
-            InlineKeyboardButton(f"Подъезд {i+1}", callback_data=f"entrance_{i+1}")
+            InlineKeyboardButton(f"{i}", callback_data=f"entrance_{i}"),
+            InlineKeyboardButton(f"{i+1}", callback_data=f"entrance_{i+1}")
         ]
         for i in range(1, 10, 2)
     ]
@@ -79,10 +77,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     uid = query.from_user.id
-    data = query.data
 
     if uid not in user_data:
         user_data[uid] = {}
+
+    data = query.data
 
     if data.startswith("entrance_"):
         user_data[uid]["entrance"] = data.split("_")[1]
@@ -95,7 +94,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i in range(1, 20, 2)
         ]
 
-        await query.edit_message_text(
+        await query.message.reply_text(
             "Выберите этаж:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -108,7 +107,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("МОП", callback_data="mop")]
         ]
 
-        await query.edit_message_text(
+        await query.message.reply_text(
             "Выберите тип:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -121,7 +120,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for section in apartments_sections
         ]
 
-        await query.edit_message_text(
+        await query.message.reply_text(
             "Выберите раздел:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -134,21 +133,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for section in mop_sections
         ]
 
-        await query.edit_message_text(
+        await query.message.reply_text(
             "Выберите раздел:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     elif data.startswith("section_"):
-        section = data.replace("section_", "")
-        user_data[uid]["section"] = section
+        user_data[uid]["section"] = data.replace("section_", "")
 
         keyboard = [
             [InlineKeyboardButton(p, callback_data=f"percent_{p}")]
             for p in percent_options
         ]
 
-        await query.edit_message_text(
+        await query.message.reply_text(
             "Выберите процент:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -169,7 +167,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_excel(row)
 
-        await query.edit_message_text("✅ Сохранено!")
+        await query.message.reply_text("✅ Сохранено")
 
 
 init_excel()
