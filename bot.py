@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import PatternFill
+from openpyxl.styles import PatternFill, Font, Alignment
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
@@ -16,15 +16,37 @@ MAX_ENTRANCES = 20
 MAX_FLOORS = 20
 
 apartments = [
-    "Наруж.стены кладка","Внутр.стены кладка","ПГП","Гипс.штк","Цем.штк",
-    "Сшитый пол","Стяжка","Эл.кв+СС","Окна ПВХ","Окна Аллюм","Двери"
+    "Наруж.стены кладка",
+    "Внутр.стены кладка",
+    "ПГП",
+    "Гипс.штк",
+    "Цем.штк",
+    "Сшитый пол",
+    "Стяжка",
+    "Эл.кв+СС",
+    "Окна ПВХ",
+    "Окна Аллюм",
+    "Двери"
 ]
 
 mop = [
-    "Внутр.стены кладка","Коллектор кладка","ВШ кладка","ШТК","Декоративная штк",
-    "Сшитый пол","Стяжка","Плитка пол","Плитка настенная","Двери МОП",
-    "Двери коллектор","Ограждения ЛК","Разводка ЭЛ+СС",
-    "Стояк отопление","Стояк канализация","Стояк ливневка","Стояк вода"
+    "Внутр.стены кладка",
+    "Коллектор кладка",
+    "ВШ кладка",
+    "ШТК",
+    "Декоративная штк",
+    "Сшитый пол",
+    "Стяжка",
+    "Плитка пол",
+    "Плитка настенная",
+    "Двери МОП",
+    "Двери коллектор",
+    "Ограждения ЛК",
+    "Разводка ЭЛ+СС",
+    "Стояк отопление",
+    "Стояк канализация",
+    "Стояк ливневка",
+    "Стояк вода"
 ]
 
 percent_keyboard = ReplyKeyboardMarkup(
@@ -50,6 +72,30 @@ def get_fill(value):
     else:
         return PatternFill("solid", start_color="FFFF00")
 
+def format_sheet(ws):
+    widths = {
+        "A": 16,
+        "B": 14,
+        "C": 35,
+        "D": 12,
+        "E": 12,
+        "F": 18,
+        "G": 40,
+        "H": 14
+    }
+
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    ws.freeze_panes = "A2"
+
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True)
+
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
 def entrance_keyboard():
     rows=[]
     for i in range(1,MAX_ENTRANCES+1,2):
@@ -69,16 +115,16 @@ def floor_keyboard():
     return ReplyKeyboardMarkup(rows,resize_keyboard=True)
 
 if not os.path.exists(STATE_FILE):
-    with open(STATE_FILE,"w") as f:
+    with open(STATE_FILE,"w",encoding="utf-8") as f:
         json.dump({},f)
 
 def load_state():
-    with open(STATE_FILE) as f:
+    with open(STATE_FILE,"r",encoding="utf-8") as f:
         return json.load(f)
 
 def save_state():
-    with open(STATE_FILE,"w") as f:
-        json.dump(user_data,f)
+    with open(STATE_FILE,"w",encoding="utf-8") as f:
+        json.dump(user_data,f,ensure_ascii=False)
 
 user_data=load_state()
 
@@ -87,6 +133,7 @@ def init_excel():
         wb=Workbook()
         ws=wb.active
         ws.append(["Дата","Время","Адрес","Подъезд","Этаж","Раздел","Пункт","Процент"])
+        format_sheet(ws)
         wb.save(FILE_NAME)
 
 def save_excel(row):
@@ -99,12 +146,15 @@ def save_excel(row):
 
 def create_floor_excel(data):
     name=f"{data['address']}_подъезд_{data['entrance']}_этаж_{data['floor']}.xlsx".replace(" ","_")
+
     wb=Workbook()
     ws=wb.active
     ws.append(["Дата","Время","Адрес","Подъезд","Этаж","Раздел","Пункт","Процент"])
 
     for r in data["floor_rows"]:
         ws.append(r)
+
+    format_sheet(ws)
 
     for i in range(2,ws.max_row+1):
         ws[f"H{i}"].fill=get_fill(ws[f"H{i}"].value)
@@ -114,12 +164,15 @@ def create_floor_excel(data):
 
 def create_full_excel(data):
     name=f"{data['address']}_полный_обход.xlsx".replace(" ","_")
+
     wb=Workbook()
     ws=wb.active
     ws.append(["Дата","Время","Адрес","Подъезд","Этаж","Раздел","Пункт","Процент"])
 
     for r in data["all_rows"]:
         ws.append(r)
+
+    format_sheet(ws)
 
     for i in range(2,ws.max_row+1):
         ws[f"H{i}"].fill=get_fill(ws[f"H{i}"].value)
