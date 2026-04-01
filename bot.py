@@ -250,8 +250,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             os.remove(filename)
 
-        await update.message.reply_text("✅ Обход завершён")
-
         user_data[uid] = {
             "step": "address",
             "percents": [],
@@ -260,6 +258,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         save_state()
+
+        await update.message.reply_text("✅ Обход завершён")
+        await update.message.reply_text("Введите адрес дома:")
         return
 
     if step == "address":
