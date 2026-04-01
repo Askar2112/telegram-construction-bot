@@ -2,12 +2,13 @@ import os
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes
+    MessageHandler,
+    ContextTypes,
+    filters,
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -39,7 +40,7 @@ mop_sections = [
     "Двери лифт"
 ]
 
-percent_options = ["0", "10", "50", "98", "100"]
+percent_options = [["0", "10"], ["50", "98"], ["100"]]
 
 
 def init_excel():
@@ -57,132 +58,111 @@ def save_excel(row):
     wb.save(FILE_NAME)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
+def main_keyboard():
+    return ReplyKeyboardMarkup(
         [
-            InlineKeyboardButton(str(i), callback_data=f"entrance_{i}"),
-            InlineKeyboardButton(str(i+1), callback_data=f"entrance_{i+1}")
-        ]
-        for i in range(1, 10, 2)
-    ]
-
-    await update.message.reply_text(
-        "Выберите подъезд:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+            ["1", "2"],
+            ["3", "4"],
+            ["5", "6"],
+            ["7", "8"],
+            ["9", "10"],
+            ["📥 Скачать Excel"]
+        ],
+        resize_keyboard=True
     )
 
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    user_data[uid] = {"step": "entrance"}
 
-    uid = query.from_user.id
-    data = query.data
+    await update.message.reply_text(
+        "Выберите подъезд:",
+        reply_markup=main_keyboard()
+    )
 
-    try:
-        if uid not in user_data:
-            user_data[uid] = {}
 
-        if data.startswith("entrance_"):
-            user_data[uid]["entrance"] = data.split("_")[1]
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    text = update.message.text.strip()
 
-            keyboard = [
-                [
-                    InlineKeyboardButton(str(i), callback_data=f"floor_{i}"),
-                    InlineKeyboardButton(str(i+1), callback_data=f"floor_{i+1}")
-                ]
-                for i in range(1, 20, 2)
-            ]
+    if text == "📥 Скачать Excel":
+        with open(FILE_NAME, "rb") as f:
+            await update.message.reply_document(f)
+        return
 
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="Выберите этаж:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+    if uid not in user_data:
+        await update.message.reply_text("Напишите /start")
+        return
+
+    step = user_data[uid]["step"]
+
+    if step == "entrance":
+        user_data[uid]["entrance"] = text
+        user_data[uid]["step"] = "floor"
+
+        keyboard = [[str(i), str(i+1)] for i in range(1, 20, 2)]
+
+        await update.message.reply_text(
+            "Выберите этаж:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+
+    elif step == "floor":
+        user_data[uid]["floor"] = text
+        user_data[uid]["step"] = "type"
+
+        await update.message.reply_text(
+            "Выберите тип:",
+            reply_markup=ReplyKeyboardMarkup(
+                [["Квартиры"], ["МОП"]],
+                resize_keyboard=True
             )
+        )
 
-        elif data.startswith("floor_"):
-            user_data[uid]["floor"] = data.split("_")[1]
+    elif step == "type":
+        user_data[uid]["type"] = text
+        user_data[uid]["step"] = "section"
 
-            keyboard = [
-                [InlineKeyboardButton("Квартиры", callback_data="apartments")],
-                [InlineKeyboardButton("МОП", callback_data="mop")]
-            ]
+        if text == "Квартиры":
+            keyboard = [[x] for x in apartments_sections]
+        else:
+            keyboard = [[x] for x in mop_sections]
 
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="Выберите тип:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+        await update.message.reply_text(
+            "Выберите раздел:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
 
-        elif data == "apartments":
-            user_data[uid]["type"] = "Квартиры"
+    elif step == "section":
+        user_data[uid]["section"] = text
+        user_data[uid]["step"] = "percent"
 
-            keyboard = [
-                [InlineKeyboardButton(section, callback_data=f"section_{section}")]
-                for section in apartments_sections
-            ]
+        await update.message.reply_text(
+            "Выберите процент:",
+            reply_markup=ReplyKeyboardMarkup(percent_options, resize_keyboard=True)
+        )
 
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="Выберите раздел:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+    elif step == "percent":
+        now = datetime.now()
 
-        elif data == "mop":
-            user_data[uid]["type"] = "МОП"
+        row = [
+            now.strftime("%Y-%m-%d"),
+            now.strftime("%H:%M:%S"),
+            user_data[uid]["entrance"],
+            user_data[uid]["floor"],
+            user_data[uid]["type"],
+            user_data[uid]["section"],
+            text
+        ]
 
-            keyboard = [
-                [InlineKeyboardButton(section, callback_data=f"section_{section}")]
-                for section in mop_sections
-            ]
+        save_excel(row)
 
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="Выберите раздел:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+        user_data[uid]["step"] = "entrance"
 
-        elif data.startswith("section_"):
-            user_data[uid]["section"] = data.replace("section_", "")
-
-            keyboard = [
-                [InlineKeyboardButton(p, callback_data=f"percent_{p}")]
-                for p in percent_options
-            ]
-
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="Выберите процент:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-
-        elif data.startswith("percent_"):
-            percent = data.replace("percent_", "")
-            now = datetime.now()
-
-            row = [
-                now.strftime("%Y-%m-%d"),
-                now.strftime("%H:%M:%S"),
-                user_data[uid]["entrance"],
-                user_data[uid]["floor"],
-                user_data[uid]["type"],
-                user_data[uid]["section"],
-                percent
-            ]
-
-            save_excel(row)
-
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="✅ Сохранено"
-            )
-
-    except Exception as e:
-        print("ERROR:", e)
-
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=f"Ошибка: {e}"
+        await update.message.reply_text(
+            "✅ Сохранено\nВыберите следующий подъезд:",
+            reply_markup=main_keyboard()
         )
 
 
@@ -191,7 +171,7 @@ init_excel()
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(button))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 print("Bot running...")
 
