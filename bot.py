@@ -19,28 +19,34 @@ TOKEN = os.getenv("BOT_TOKEN")
 FILE_NAME = "construction_progress.xlsx"
 STATE_FILE = "user_state.json"
 
+MAX_ENTRANCES = 20
+MAX_FLOORS = 20
+
 apartments = [
-    "Кладка внутр. стены",
-    "Кладка наруж. стены",
-    "Стяжка",
+    "Наруж.стены",
+    "Внутр.стены",
     "ПГП",
-    "Штукатурка гипс",
-    "Штукатурка ЦПШ",
+    "Гипс.штк",
+    "Цем.штк",
     "Сшитый пол",
+    "Эл.кв+СС",
     "Окна ПВХ",
+    "Окна Аллюм",
     "Двери"
 ]
 
 mop = [
-    "Кладка наруж. стены",
-    "Кладка коллекторы",
-    "Кладка ВШ",
+    "Внутр.стены кладка",
+    "ШТК",
+    "Декоративная штк",
     "Стяжка",
-    "Окна алюм.",
-    "Гипс МОП",
-    "Плитка МОП",
+    "Сшитый пол",
+    "Плитка пол",
+    "Плитка настенная",
     "Двери МОП",
-    "Двери лифт"
+    "Ограждения ЛК",
+    "Разводка ЭЛ+СС",
+    "Стояки"
 ]
 
 if not os.path.exists(STATE_FILE):
@@ -63,8 +69,9 @@ user_data = load_state()
 percent_keyboard = ReplyKeyboardMarkup(
     [
         ["0", "10"],
-        ["50", "98"],
+        ["50", "60"],
         ["100"],
+        ["Пропустить"],
         ["⬅️ Назад"]
     ],
     resize_keyboard=True
@@ -72,30 +79,30 @@ percent_keyboard = ReplyKeyboardMarkup(
 
 
 def entrance_keyboard():
-    return ReplyKeyboardMarkup(
-        [["1", "2"], ["3", "4"], ["5", "6"], ["7", "8"], ["9", "10"]],
-        resize_keyboard=True
-    )
+    keyboard = []
+    for i in range(1, MAX_ENTRANCES + 1, 2):
+        if i < MAX_ENTRANCES:
+            keyboard.append([str(i), str(i + 1)])
+        else:
+            keyboard.append([str(i)])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
 def floor_keyboard():
-    return ReplyKeyboardMarkup(
-        [[str(i), str(i + 1)] for i in range(1, 20, 2)],
-        resize_keyboard=True
-    )
+    keyboard = []
+    for i in range(1, MAX_FLOORS + 1, 2):
+        if i < MAX_FLOORS:
+            keyboard.append([str(i), str(i + 1)])
+        else:
+            keyboard.append([str(i)])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
 def init_excel():
     if not os.path.exists(FILE_NAME):
         wb = Workbook()
         ws = wb.active
-
-        headers = [
-            "Дата", "Время", "Адрес", "Подъезд", "Этаж",
-            "Тип", "Пункт", "Процент"
-        ]
-
-        ws.append(headers)
+        ws.append(["Дата", "Время", "Адрес", "Подъезд", "Этаж", "Раздел", "Пункт", "Процент"])
 
         for cell in ws[1]:
             cell.font = Font(bold=True)
@@ -125,11 +132,7 @@ def create_floor_excel(data):
     wb = Workbook()
     ws = wb.active
 
-    headers = [
-        "Дата", "Время", "Адрес", "Подъезд",
-        "Этаж", "Тип", "Пункт", "Процент"
-    ]
-
+    headers = ["Дата", "Время", "Адрес", "Подъезд", "Этаж", "Раздел", "Пункт", "Процент"]
     ws.append(headers)
 
     for cell in ws[1]:
@@ -138,25 +141,32 @@ def create_floor_excel(data):
     for row in data["floor_rows"]:
         ws.append(row)
 
-    widths = {
-        "A": 14,
-        "B": 12,
-        "C": 25,
-        "D": 10,
-        "E": 10,
-        "F": 15,
-        "G": 25,
-        "H": 12
-    }
+    for row_num in range(2, len(data["floor_rows"]) + 2):
+        percent = ws[f"H{row_num}"].value
+        ws[f"H{row_num}"].fill = get_fill(percent)
 
-    for col, width in widths.items():
-        ws.column_dimensions[col].width = width
+    wb.save(filename)
+    return filename
 
-    ws.freeze_panes = "A2"
 
-    for row in range(2, ws.max_row + 1):
-        percent = ws[f"H{row}"].value
-        ws[f"H{row}"].fill = get_fill(percent)
+def create_full_excel(data):
+    filename = f"{data['address'].replace(' ', '_')}_полный_обход.xlsx"
+
+    wb = Workbook()
+    ws = wb.active
+
+    headers = ["Дата", "Время", "Адрес", "Подъезд", "Этаж", "Раздел", "Пункт", "Процент"]
+    ws.append(headers)
+
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    for row in data["all_rows"]:
+        ws.append(row)
+
+    for row_num in range(2, len(data["all_rows"]) + 2):
+        percent = ws[f"H{row_num}"].value
+        ws[f"H{row_num}"].fill = get_fill(percent)
 
     wb.save(filename)
     return filename
@@ -168,7 +178,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data[uid] = {
         "step": "address",
         "percents": [],
-        "floor_rows": []
+        "floor_rows": [],
+        "all_rows": []
     }
 
     save_state()
@@ -192,37 +203,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename = create_floor_excel(data)
 
             with open(filename, "rb") as f:
-                await update.message.reply_document(
-                    document=f,
-                    filename=filename
-                )
+                await update.message.reply_document(document=f, filename=filename)
 
             os.remove(filename)
+        return
+
+    if text == "Завершить обход":
+        if data.get("all_rows"):
+            filename = create_full_excel(data)
+
+            with open(filename, "rb") as f:
+                await update.message.reply_document(document=f, filename=filename)
+
+            os.remove(filename)
+
+        await update.message.reply_text("✅ Обход завершён")
+
+        user_data[uid] = {
+            "step": "address",
+            "percents": [],
+            "floor_rows": [],
+            "all_rows": []
+        }
+
+        save_state()
         return
 
     if step == "address":
         data["address"] = text
         data["step"] = "entrance"
         save_state()
-
-        await update.message.reply_text(
-            "Выберите подъезд:",
-            reply_markup=entrance_keyboard()
-        )
+        await update.message.reply_text("Выберите подъезд:", reply_markup=entrance_keyboard())
 
     elif step == "entrance":
         data["entrance"] = text
         data["step"] = "floor"
         save_state()
-
-        await update.message.reply_text(
-            "Выберите этаж:",
-            reply_markup=floor_keyboard()
-        )
+        await update.message.reply_text("Выберите этаж:", reply_markup=floor_keyboard())
 
     elif step == "floor":
         data["floor"] = text
-        data["type"] = "Квартиры"
+        data["type"] = "Кв"
         data["items"] = apartments
         data["index"] = 0
         data["percents"] = []
@@ -230,10 +251,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data["step"] = "percent"
         save_state()
 
-        await update.message.reply_text(
-            f"Квартиры\n{apartments[0]}:",
-            reply_markup=percent_keyboard
-        )
+        await update.message.reply_text(f"Кв\n{apartments[0]}:", reply_markup=percent_keyboard)
 
     elif step == "percent":
 
@@ -244,6 +262,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     data["percents"].pop()
                 if data["floor_rows"]:
                     data["floor_rows"].pop()
+                if data["all_rows"]:
+                    data["all_rows"].pop()
 
             save_state()
 
@@ -253,89 +273,92 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        item = data["items"][data["index"]]
-        percent = int(text)
+        if text == "Пропустить":
+            data["index"] += 1
+            save_state()
 
-        data["percents"].append(percent)
+        else:
+            item = data["items"][data["index"]]
+            percent = int(text)
 
-        now = datetime.now()
+            data["percents"].append(percent)
 
-        row = [
-            now.strftime("%Y-%m-%d"),
-            now.strftime("%H:%M:%S"),
-            data["address"],
-            data["entrance"],
-            data["floor"],
-            data["type"],
-            item,
-            percent
-        ]
+            now = datetime.now()
 
-        data["floor_rows"].append(row)
-        save_excel(row)
+            row = [
+                now.strftime("%Y-%m-%d"),
+                now.strftime("%H:%M:%S"),
+                data["address"],
+                data["entrance"],
+                data["floor"],
+                data["type"],
+                item,
+                percent
+            ]
 
-        data["index"] += 1
-        save_state()
+            data["floor_rows"].append(row)
+            data["all_rows"].append(row)
+            save_excel(row)
+
+            data["index"] += 1
+            save_state()
 
         if data["index"] < len(data["items"]):
             await update.message.reply_text(
                 f"{data['type']}\n{data['items'][data['index']]}:",
                 reply_markup=percent_keyboard
             )
+            return
+
+        if data["type"] == "Кв":
+            data["type"] = "МОП"
+            data["items"] = mop
+            data["index"] = 0
+            save_state()
+
+            await update.message.reply_text(
+                f"МОП\n{mop[0]}:",
+                reply_markup=percent_keyboard
+            )
+
         else:
-            if data["type"] == "Квартиры":
-                data["type"] = "МОП"
-                data["items"] = mop
-                data["index"] = 0
-                save_state()
+            avg = round(sum(data["percents"]) / len(data["percents"]), 1) if data["percents"] else 0
 
-                await update.message.reply_text(
-                    f"МОП\n{mop[0]}:",
-                    reply_markup=percent_keyboard
+            data["step"] = "after_floor"
+            save_state()
+
+            await update.message.reply_text(f"✅ Этаж завершён\nСредняя готовность: {avg}%")
+
+            await update.message.reply_text(
+                "Что дальше?",
+                reply_markup=ReplyKeyboardMarkup(
+                    [
+                        ["Следующий этаж"],
+                        ["Подъезд завершён"],
+                        ["📥 Скачать Excel"],
+                        ["Завершить обход"]
+                    ],
+                    resize_keyboard=True
                 )
-            else:
-                avg = round(sum(data["percents"]) / len(data["percents"]), 1)
-
-                data["step"] = "after_floor"
-                save_state()
-
-                await update.message.reply_text(
-                    f"✅ Этаж завершён\nСредняя готовность: {avg}%"
-                )
-
-                await update.message.reply_text(
-                    "Что дальше?",
-                    reply_markup=ReplyKeyboardMarkup(
-                        [
-                            ["Следующий этаж"],
-                            ["Подъезд завершён"],
-                            ["📥 Скачать Excel"]
-                        ],
-                        resize_keyboard=True
-                    )
-                )
+            )
 
     elif step == "after_floor":
         if text == "Следующий этаж":
             data["step"] = "floor"
             save_state()
-
-            await update.message.reply_text(
-                "Выберите этаж:",
-                reply_markup=floor_keyboard()
-            )
+            await update.message.reply_text("Выберите этаж:", reply_markup=floor_keyboard())
 
         elif text == "Подъезд завершён":
             data["step"] = "after_entrance"
             save_state()
-
             await update.message.reply_text(
                 "Продолжить обход?",
                 reply_markup=ReplyKeyboardMarkup(
                     [
                         ["Следующий подъезд"],
                         ["Новый адрес"],
-                        ["📥 Скачать Excel"]
+                        ["📥 Скачать Excel"],
+                        ["Завершить обход"]
                     ],
                     resize_keyboard=True
                 )
@@ -345,16 +368,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if text == "Следующий подъезд":
             data["step"] = "entrance"
             save_state()
-
-            await update.message.reply_text(
-                "Выберите подъезд:",
-                reply_markup=entrance_keyboard()
-            )
+            await update.message.reply_text("Выберите подъезд:", reply_markup=entrance_keyboard())
 
         elif text == "Новый адрес":
             data["step"] = "address"
             save_state()
-
             await update.message.reply_text("Введите новый адрес:")
 
 
