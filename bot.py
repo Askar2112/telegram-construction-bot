@@ -13,6 +13,8 @@ from telegram.ext import (
 TOKEN = os.getenv("BOT_TOKEN")
 FILE_NAME = "construction_progress.xlsx"
 
+user_data = {}
+
 apartments_sections = [
     "Кладка внутренние стены",
     "Кладка наружные стены",
@@ -41,8 +43,6 @@ mop_sections = [
 
 percent_options = ["0", "10", "50", "98", "100"]
 
-user_data = {}
-
 
 def init_excel():
     if not os.path.exists(FILE_NAME):
@@ -61,8 +61,11 @@ def save_excel(row):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton(f"Подъезд {i}", callback_data=f"entrance_{i}")]
-        for i in range(1, 11)
+        [
+            InlineKeyboardButton(f"Подъезд {i}", callback_data=f"entrance_{i}"),
+            InlineKeyboardButton(f"Подъезд {i+1}", callback_data=f"entrance_{i+1}")
+        ]
+        for i in range(1, 10, 2)
     ]
 
     await update.message.reply_text(
@@ -85,8 +88,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[uid]["entrance"] = data.split("_")[1]
 
         keyboard = [
-            [InlineKeyboardButton(f"Этаж {i}", callback_data=f"floor_{i}")]
-            for i in range(1, 21)
+            [
+                InlineKeyboardButton(f"{i}", callback_data=f"floor_{i}"),
+                InlineKeyboardButton(f"{i+1}", callback_data=f"floor_{i+1}")
+            ]
+            for i in range(1, 20, 2)
         ]
 
         await query.edit_message_text(
@@ -103,9 +109,67 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
         await query.edit_message_text(
+            "Выберите тип:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data == "apartments":
+        user_data[uid]["type"] = "Квартиры"
+
+        keyboard = [
+            [InlineKeyboardButton(section, callback_data=f"section_{section}")]
+            for section in apartments_sections
+        ]
+
+        await query.edit_message_text(
             "Выберите раздел:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+
+    elif data == "mop":
+        user_data[uid]["type"] = "МОП"
+
+        keyboard = [
+            [InlineKeyboardButton(section, callback_data=f"section_{section}")]
+            for section in mop_sections
+        ]
+
+        await query.edit_message_text(
+            "Выберите раздел:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data.startswith("section_"):
+        section = data.replace("section_", "")
+        user_data[uid]["section"] = section
+
+        keyboard = [
+            [InlineKeyboardButton(p, callback_data=f"percent_{p}")]
+            for p in percent_options
+        ]
+
+        await query.edit_message_text(
+            "Выберите процент:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data.startswith("percent_"):
+        percent = data.replace("percent_", "")
+        now = datetime.now()
+
+        row = [
+            now.strftime("%Y-%m-%d"),
+            now.strftime("%H:%M:%S"),
+            user_data[uid]["entrance"],
+            user_data[uid]["floor"],
+            user_data[uid]["type"],
+            user_data[uid]["section"],
+            percent
+        ]
+
+        save_excel(row)
+
+        await query.edit_message_text("✅ Сохранено!")
 
 
 init_excel()
