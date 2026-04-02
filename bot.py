@@ -62,8 +62,6 @@ percent_keyboard = ReplyKeyboardMarkup(
 ], resize_keyboard=True
 )
 
-start_keyboard = ReplyKeyboardMarkup([["Start"]], resize_keyboard=True)
-
 def get_fill(value):
     if value == 0:
         return PatternFill("solid", start_color="FF0000")
@@ -186,19 +184,18 @@ async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
     uid=str(update.effective_user.id)
     user_data[uid]={"step":"address","floor_rows":[],"all_rows":[]}
     save_state()
-    await update.message.reply_text("Введите адрес дома:",reply_markup=start_keyboard)
+    await update.message.reply_text("Введите адрес дома:")
 
 async def handle(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     uid=str(update.effective_user.id)
     text=update.message.text
 
-    if text=="Start":
-        await start(update,context)
-        return
-
     if uid not in user_data:
-        await update.message.reply_text("Нажмите Start",reply_markup=start_keyboard)
+        # Инициализация пользователя при первом сообщении
+        user_data[uid]={"step":"address","floor_rows":[],"all_rows":[]}
+        save_state()
+        await update.message.reply_text("Введите адрес дома:")
         return
 
     data=user_data[uid]
@@ -215,7 +212,7 @@ async def handle(update:Update,context:ContextTypes.DEFAULT_TYPE):
         user_data[uid]={"step":"address","floor_rows":[],"all_rows":[]}
         save_state()
 
-        await update.message.reply_text("Введите адрес дома:",reply_markup=start_keyboard)
+        await update.message.reply_text("Введите адрес дома:")
         return
 
     if step=="address":
